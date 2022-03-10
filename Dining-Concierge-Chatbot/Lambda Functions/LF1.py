@@ -1,6 +1,8 @@
 import json
 import boto3
 import re
+import datetime
+
 
 def checkalldigits(str):
     flag = True
@@ -45,7 +47,8 @@ def lambda_handler(event, context):
         contact_info_flag = False
         location_flag = False
         cuisine_type_flag = False
-        
+        num_people_flag = False
+        time_flag = False
         location = event.get("currentIntent").get("slots").get("Location")
         if location_flag==False and checkValidLocation(location):
             location_flag=True
@@ -55,8 +58,31 @@ def lambda_handler(event, context):
             cuisine_type_flag=True
             
         num_people = event.get("currentIntent").get("slots").get("NumPeople")
+        if num_people_flag==False and num_people and int(num_people)>0 and int(num_people)<=20:
+            num_people_flag = True
+            
         time = event.get("currentIntent").get("slots").get("Time")
-        
+        if time_flag==False and time:
+            hour_entered, minutes_entered = None, None
+            if ":" not in time:
+                hour_entered, minutes_entered = int(time[:2]), int(time[2:]) 
+            else:
+                hour_entered, minutes_entered = time.split(":")
+            now = datetime.datetime.now()
+            cur_hour, cur_minute = int(now.hour), int(now.minute)
+            print("Cur-time : ", cur_hour, cur_minute)
+            cur_hour = (cur_hour+24-5)%24
+            print("Cur-hour and cur_minute", cur_hour, cur_minute)
+            hour_entered, minutes_entered = int(hour_entered), int(minutes_entered)
+            print("hour_entered, minutes_entered", hour_entered, minutes_entered)
+            if cur_hour==hour_entered:
+                print("Hour matched")
+            if cur_minute==minutes_entered:
+                print("minute matched")
+            if hour_entered > cur_hour:
+                time_flag=True
+            elif hour_entered==cur_hour and minutes_entered >= cur_minute:
+                time_flag = True
         
         contact_info = event.get("currentIntent").get("slots").get("ContactInfo")
         if contact_info_flag==False and contact_info:
@@ -124,7 +150,7 @@ def lambda_handler(event, context):
                     }
                 }
             }
-        elif num_people is None:
+        elif num_people_flag == False:
             return {
                 "dialogAction": {
                     "intentName": "diningSuggestionsIntent",
@@ -132,7 +158,7 @@ def lambda_handler(event, context):
                     "slotToElicit": "NumPeople",
                     "message": {
                         "contentType": "PlainText",
-                        "content": "Please tell the number of people that will be dining?"
+                        "content": "Please tell the number of people that will be dining? (Number of people should be at max 20)"
                     },
                     "slots": {
                         "Location": location,
@@ -143,7 +169,7 @@ def lambda_handler(event, context):
                     }
                 }
             }
-        elif time is None:
+        elif time_flag == False:
             return {
                 "dialogAction": {
                     "intentName": "diningSuggestionsIntent",
@@ -151,7 +177,7 @@ def lambda_handler(event, context):
                     "slotToElicit": "Time",
                     "message": {
                         "contentType": "PlainText",
-                        "content": "Please tell the time you want to dine at."
+                        "content": "Please tell the time you want to dine at. Time should be between now and 23:59 pm"
                     },
                     "slots": {
                         "Location": location,
