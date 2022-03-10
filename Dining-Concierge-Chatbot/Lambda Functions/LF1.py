@@ -2,6 +2,7 @@ import json
 import boto3
 import re
 import datetime
+import dateutil.parser
 
 
 def checkalldigits(str):
@@ -10,6 +11,13 @@ def checkalldigits(str):
         if ch not in ['0', '9', '8', '7', '6', '5', '4', '3', '2', '1']:
             return False
     return flag
+
+def isvalid_date(date):
+    try:
+        dateutil.parser.parse(date)
+        return True
+    except:
+        return False
     
 def checkValidLocation(location):
     if str(location).lower() in ['queens', 'manhattan', 'staten island', 'brooklyn', 'bronx']:
@@ -49,6 +57,10 @@ def lambda_handler(event, context):
         cuisine_type_flag = False
         num_people_flag = False
         time_flag = False
+        date_flag = False
+        same_day_flag = False
+        
+        
         location = event.get("currentIntent").get("slots").get("Location")
         if location_flag==False and checkValidLocation(location):
             location_flag=True
@@ -60,9 +72,16 @@ def lambda_handler(event, context):
         num_people = event.get("currentIntent").get("slots").get("NumPeople")
         if num_people_flag==False and num_people and int(num_people)>0 and int(num_people)<=20:
             num_people_flag = True
-            
+        
+        date = event.get("currentIntent").get("slots").get("Date")
+        if date_flag==False and date:
+            if isvalid_date(date) and datetime.datetime.strptime(date, '%Y-%m-%d').date() >= datetime.date.today():
+                date_flag = True
+                if datetime.datetime.strptime(date, '%Y-%m-%d').date() == datetime.date.today():
+                    same_day_flag = True
+        
         time = event.get("currentIntent").get("slots").get("Time")
-        if time_flag==False and time:
+        if time_flag==False and time and same_day_flag:
             hour_entered, minutes_entered = None, None
             if ":" not in time:
                 hour_entered, minutes_entered = int(time[:2]), int(time[2:]) 
@@ -83,19 +102,14 @@ def lambda_handler(event, context):
                 time_flag=True
             elif hour_entered==cur_hour and minutes_entered >= cur_minute:
                 time_flag = True
+        elif not same_day_flag and time:
+            time_flag=True
         
         contact_info = event.get("currentIntent").get("slots").get("ContactInfo")
         if contact_info_flag==False and contact_info:
-            contact_info_char_arr = []
-            for ch in str(contact_info):
-                if ch=='+1':
-                    contact_info_char_arr.append(ch)
-                if ch in ['0', '9', '8', '7', '6', '5', '4', '3', '2', '1']:
-                    contact_info_char_arr.append(ch)
-            contact_info = ''.join(contact_info)
-            if len(contact_info)==10 and checkalldigits(str(contact_info)):
+            if len(contact_info)==10 and checkalldigits(contact_info):
                 contact_info_flag = True
-            elif len(contact_info)==12 and contact_info[:2] == '+1' and checkalldigits(str(contact_info[2:])):
+            elif len(contact_info)==12 and contact_info[:2] == '+1' and checkalldigits(contact_info[2:]):
                 contact_info_flag = True
                 contact_info = contact_info[2:]
                 
@@ -123,7 +137,8 @@ def lambda_handler(event, context):
                         "CuisineType": cuisine_type,
                         "NumPeople": num_people,
                         "Time": time,
-                        "ContactInfo": contact_info
+                        "ContactInfo": contact_info,
+                        "Date": date
                     },
                     
                     "slotToElicit": "Location"
@@ -146,7 +161,8 @@ def lambda_handler(event, context):
                         "CuisineType": cuisine_type,
                         "NumPeople": num_people,
                         "Time": time,
-                        "ContactInfo": contact_info
+                        "ContactInfo": contact_info,
+                        "Date": date
                     }
                 }
             }
@@ -165,29 +181,72 @@ def lambda_handler(event, context):
                         "CuisineType": cuisine_type,
                         "NumPeople": num_people,
                         "Time": time,
-                        "ContactInfo": contact_info
+                        "ContactInfo": contact_info,
+                        "Date": date
                     }
                 }
             }
-        elif time_flag == False:
+        elif date_flag == False:
             return {
                 "dialogAction": {
                     "intentName": "diningSuggestionsIntent",
                     "type": "ElicitSlot",
-                    "slotToElicit": "Time",
+                    "slotToElicit": "Date",
                     "message": {
                         "contentType": "PlainText",
-                        "content": "Please tell the time you want to dine at. Time should be between now and 23:59 pm"
+                        "content": "Please tell the date you will be dining on. It should be today, or ahead in time."
                     },
                     "slots": {
                         "Location": location,
                         "CuisineType": cuisine_type,
                         "NumPeople": num_people,
                         "Time": time,
-                        "ContactInfo": contact_info
+                        "ContactInfo": contact_info,
+                        "Date": date
                     }
                 }
             }
+        elif time_flag == False:
+            if same_day_flag:
+                return {
+                    "dialogAction": {
+                        "intentName": "diningSuggestionsIntent",
+                        "type": "ElicitSlot",
+                        "slotToElicit": "Time",
+                        "message": {
+                            "contentType": "PlainText",
+                            "content": "Please tell the time you want to dine at. Time should be between now and 23:59 pm"
+                        },
+                        "slots": {
+                            "Location": location,
+                            "CuisineType": cuisine_type,
+                            "NumPeople": num_people,
+                            "Time": time,
+                            "ContactInfo": contact_info,
+                            "Date": date
+                        }
+                    }
+                }
+            else:
+                return {
+                    "dialogAction": {
+                        "intentName": "diningSuggestionsIntent",
+                        "type": "ElicitSlot",
+                        "slotToElicit": "Time",
+                        "message": {
+                            "contentType": "PlainText",
+                            "content": "Please tell the time you want to dine at. Time should be between 12:00am and 23:59 pm"
+                        },
+                        "slots": {
+                            "Location": location,
+                            "CuisineType": cuisine_type,
+                            "NumPeople": num_people,
+                            "Time": time,
+                            "ContactInfo": contact_info,
+                            "Date": date
+                        }
+                    }
+                }
         elif contact_info is None or contact_info_flag==False:
             return {
                 "dialogAction": {
@@ -203,7 +262,8 @@ def lambda_handler(event, context):
                         "CuisineType": cuisine_type,
                         "NumPeople": num_people,
                         "Time": time,
-                        "ContactInfo": contact_info
+                        "ContactInfo": contact_info,
+                        "Date": date
                     }
                 }
             }
